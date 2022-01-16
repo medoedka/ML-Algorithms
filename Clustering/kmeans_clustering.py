@@ -1,5 +1,8 @@
 import numpy as np
 import random
+from matplotlib import pyplot as plt
+from collections import namedtuple
+from sklearn.decomposition import PCA
 
 
 class DataFormatError(Exception):
@@ -22,14 +25,11 @@ class InsufficientDataError(Exception):
     pass
 
 
-class Kmeans():
-
+class Kmeans:
     iteration = 0
     loss_dict = {}
 
-    def __init__(self, data=None, cluster_kernels=None, k=3, cluster_convergence_step=1e-4):
-        self.data = None
-        self.cluster_kernels = None
+    def __init__(self, k=3, cluster_convergence_step=1e-4):
         self.k = k
         self.cluster_convergence_step = cluster_convergence_step
 
@@ -92,20 +92,61 @@ class Kmeans():
 
         return cluster_coordinates
 
-    def fit(self, data):
+    def fit_predict(self, data):
         self.data = data
         self.__data_check()
-        cluster_kernels = self.__initialization_of_clusters()
+        self.cluster_kernels = self.__initialization_of_clusters()
         while True:
             if len(self.loss_dict) < 2:
                 pass
             else:
-                if self.loss_dict[self.iteration - 1] - self.loss_dict[self.iteration] > self.cluster_convergence_step:
+                if self.loss_dict[self.iteration - 1] - self.loss_dict[self.iteration] <= self.cluster_convergence_step:
                     break
-            minimums = self.__find_minimum(cluster_kernels)
-            self.__count_loss(minimums, cluster_kernels)
-            self.cluster_kernels = self.__centroid_correction(minimums, cluster_kernels)
-        return cluster_kernels
-        print(f'Number of iterations: {self.iteration}\n')
-        print(f'Loss: {self.loss_dict[self.iteration]}\n')
-        print(f'Cluster centers: {cluster_kernels}')
+            self.minimums = self.__find_minimum(self.cluster_kernels)
+            self.__count_loss(self.minimums, self.cluster_kernels)
+            self.cluster_kernels = self.__centroid_correction(self.minimums, self.cluster_kernels)
+
+        result_names = namedtuple('Results', [
+            'iterations',
+            'loss',
+            'cluster_centres',
+            'data_labels'
+        ])
+
+        result_values = result_names(
+            self.iteration,
+            self.loss_dict[self.iteration],
+            self.cluster_kernels,
+            self.minimums
+        )
+
+        return result_values
+
+    def plot_data_2D(self):
+        if self.loss_dict == {}:
+            raise InsufficientDataError('No data to plot losses, call fit_predict() function first')
+        transformer = PCA(2)
+        transformed_data = transformer.fit_transform(self.data)
+        transformed_centroids = transformer.transform(self.cluster_kernels)
+        plt.figure(figsize=(12, 10))
+        plt.title('2D data clusters', fontsize=16)
+        for data_index in np.unique(self.minimums):
+            indexes = np.where(self.minimums == data_index)
+            x = transformed_data[indexes, 0]
+            y = transformed_data[indexes, 1]
+            plt.scatter(x, y, label=data_index, alpha=0.4, s=30)
+        plt.scatter(transformed_centroids[:, 0], transformed_centroids[:, 1], s=70, facecolors='none', edgecolors='r')
+        plt.legend()
+        plt.show()
+
+    def plot_losses(self):
+        if self.loss_dict == {}:
+            raise InsufficientDataError('No data to plot losses, call fit_predict() function first')
+        x, y = zip(*self.loss_dict.items())
+        plt.figure(figsize=(12, 10))
+        plt.title('Change in loss against the number of iterations', fontsize=16)
+        plt.xlabel('Iterations', fontsize=16)
+        plt.ylabel('$J ^ {clust}$', fontsize=16)
+        plt.xticks(np.arange(min(x), max(x) + 1, step=1))
+        plt.plot(x, y, linestyle='-', marker='o', color='r')
+        plt.show()
